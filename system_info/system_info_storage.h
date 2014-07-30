@@ -6,15 +6,24 @@
 #define SYSTEM_INFO_SYSTEM_INFO_STORAGE_H_
 
 #include <glib.h>
-#if defined(GENERIC_DESKTOP)
 #include <libudev.h>
-#endif
+#include <map>
 #include <string>
 
 #include "common/picojson.h"
 #include "common/utils.h"
 #include "system_info/system_info_instance.h"
 #include "system_info/system_info_utils.h"
+
+struct SysInfoDeviceStorageUnit {
+  bool is_removable;
+  double available_capacity;
+  double capacity;
+  int capability;
+  int id;
+  std::string name;
+  std::string type;
+};
 
 class SysInfoStorage : public SysInfoObject {
  public:
@@ -31,24 +40,27 @@ class SysInfoStorage : public SysInfoObject {
 
  private:
   explicit SysInfoStorage();
-  bool Update(picojson::value& error);
-  static gboolean OnUpdateTimeout(gpointer user_data);
+  static void StorageDevicesListener(gpointer data);
+  void Update(picojson::value& error);
+  bool GetAllAvailableStorageDevices(picojson::value& error,
+                                     picojson::array& units_arr) const;
+  bool InitStorageMonitor();
+  bool IsRealStorageDevice(udev_device *dev) const;
+  void QueryAllAvailableStorageUnits(picojson::value& error);
+  SysInfoDeviceStorageUnit MakeStorageUnit(picojson::value& error,
+                                           udev_device* dev) const;
+  void AddStorageUnit(picojson::value& error, udev_device* dev);
+  void OnDeviceUpdate();
 
-  int timeout_cb_id_;
+  GThread* usb_host_listener_;
+  int udev_monitor_fd_;
   picojson::value units_;
+  udev* udev_;
+  udev_enumerate* enumerate_;
+  udev_monitor* udev_monitor_;
 
-#if defined(GENERIC_DESKTOP)
-  void GetDetails(const std::string& mnt_fsname,
-                  const std::string& mnt_dir,
-                  picojson::value& error,
-                  picojson::value& unit);
-  std::string GetDevPathFromMountPath(const std::string& mnt_path);
-
-  struct udev* udev_;
-#elif defined(TIZEN)
-  bool GetInternal(picojson::value& error, picojson::value& unit);
-  bool GetMMC(picojson::value& error, picojson::value& unit);
-#endif
+  typedef std::map<int, SysInfoDeviceStorageUnit> StoragesMap;
+  StoragesMap storages_;
 
   DISALLOW_COPY_AND_ASSIGN(SysInfoStorage);
 };
